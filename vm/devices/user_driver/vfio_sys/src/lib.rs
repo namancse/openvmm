@@ -80,6 +80,10 @@ mod ioctl {
         request_code_none!(VFIO_TYPE, VFIO_BASE + 10),
         vfio_irq_set
     );
+    nix::ioctl_none_bad!(
+        vfio_device_reset,
+        request_code_none!(VFIO_TYPE, VFIO_BASE + 11)
+    );
     nix::ioctl_write_ptr_bad!(
         vfio_group_set_keep_alive,
         request_code_none!(VFIO_TYPE, VFIO_PRIVATE_BASE),
@@ -205,6 +209,11 @@ pub struct Group {
 }
 
 impl Group {
+    /// Construct a `Group` from a pre-opened VFIO group file descriptor.
+    pub fn from_file(file: File) -> Self {
+        Self { file }
+    }
+
     pub fn open(group: u64) -> anyhow::Result<Self> {
         Self::open_path(format!("/dev/vfio/{group}").as_ref())
     }
@@ -273,6 +282,23 @@ impl Group {
                 .context("failed to set container")?;
         }
         Ok(())
+    }
+
+    /// Try to attach this group to the given container.
+    ///
+    /// Returns `Ok(true)` if the group was successfully attached, `Ok(false)`
+    /// if the kernel rejected the pairing (EINVAL — the IOMMU domains are
+    /// incompatible), or `Err` on unexpected failures.
+    pub fn try_set_container(&self, container: &Container) -> anyhow::Result<bool> {
+        // SAFETY: The file descriptors are valid.
+        let result = unsafe {
+            ioctl::vfio_group_set_container(self.file.as_raw_fd(), &container.file.as_raw_fd())
+        };
+        match result {
+            Ok(_) => Ok(true),
+            Err(nix::errno::Errno::EINVAL) => Ok(false),
+            Err(e) => Err(e).context("failed to set container"),
+        }
     }
 
     pub fn status(&self) -> anyhow::Result<GroupStatus> {
@@ -350,12 +376,12 @@ pub struct DeviceInfo {
 
 #[bitfield(u32)]
 pub struct DeviceFlags {
-    reset: bool,
-    pci: bool,
-    platform: bool,
-    amba: bool,
-    ccw: bool,
-    ap: bool,
+    pub reset: bool,
+    pub pci: bool,
+    pub platform: bool,
+    pub amba: bool,
+    pub ccw: bool,
+    pub ap: bool,
 
     #[bits(26)]
     _reserved: u32,
@@ -554,6 +580,18 @@ impl Device {
         unsafe {
             ioctl::vfio_device_set_irqs(self.file.as_raw_fd(), &header)
                 .context("failed to unmap msix vectors")?;
+        }
+        Ok(())
+    }
+
+    /// Reset the device via VFIO_DEVICE_RESET.
+    ///
+    /// Not all devices support reset — check `DeviceInfo::flags.reset()`
+    /// first. Returns an error if the ioctl fails.
+    pub fn reset(&self) -> anyhow::Result<()> {
+        // SAFETY: The file descriptor is valid.
+        unsafe {
+            ioctl::vfio_device_reset(self.file.as_raw_fd()).context("VFIO_DEVICE_RESET failed")?;
         }
         Ok(())
     }

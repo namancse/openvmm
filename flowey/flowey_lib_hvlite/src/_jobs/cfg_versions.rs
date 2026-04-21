@@ -5,8 +5,8 @@
 //! version configuration requests required by various dependencies in OpenVMM
 //! pipelines.
 
+use crate::common::CommonArch;
 use crate::resolve_openhcl_kernel_package::OpenhclKernelPackageKind;
-use crate::run_cargo_build::common::CommonArch;
 use flowey::node::prelude::*;
 use std::collections::BTreeMap;
 
@@ -24,7 +24,7 @@ pub const GH_CLI: &str = "2.52.0";
 pub const MDBOOK: &str = "0.4.40";
 pub const MDBOOK_ADMONISH: &str = "1.18.0";
 pub const MDBOOK_MERMAID: &str = "0.14.0";
-pub const MU_MSVM: &str = "25.1.11";
+pub const MU_MSVM: &str = "26.0.0";
 pub const NEXTEST: &str = "0.9.101";
 pub const NODEJS: &str = "24.x";
 // N.B. Kernel version numbers for dev and stable branches are not directly
@@ -135,13 +135,7 @@ impl FlowNode for Node {
         if !local_openvmm_deps.is_empty() {
             let deps_local_paths = local_openvmm_deps
                 .into_iter()
-                .map(|(arch, path)| {
-                    let openvmm_deps_arch = match arch {
-                        CommonArch::X86_64 => crate::resolve_openvmm_deps::OpenvmmDepsArch::X86_64,
-                        CommonArch::Aarch64 => crate::resolve_openvmm_deps::OpenvmmDepsArch::Aarch64,
-                    };
-                    (openvmm_deps_arch, ConfigVar(path))
-                })
+                .map(|(arch, path)| (arch, ConfigVar(path)))
                 .collect();
             ctx.config(crate::resolve_openvmm_deps::Config {
                 local_paths: deps_local_paths,
@@ -162,11 +156,7 @@ impl FlowNode for Node {
             let kernel_local_paths = local_kernel
                 .into_iter()
                 .map(|(arch, (kernel, modules))| {
-                    let kernel_arch = match arch {
-                        CommonArch::X86_64 => crate::resolve_openhcl_kernel_package::OpenhclKernelPackageArch::X86_64,
-                        CommonArch::Aarch64 => crate::resolve_openhcl_kernel_package::OpenhclKernelPackageArch::Aarch64,
-                    };
-                    (kernel_arch, (ConfigVar(kernel), ConfigVar(modules)))
+                    (arch, (ConfigVar(kernel), ConfigVar(modules)))
                 })
                 .collect();
             ctx.config(crate::resolve_openhcl_kernel_package::Config {
@@ -179,13 +169,7 @@ impl FlowNode for Node {
         if !local_uefi.is_empty() {
             let uefi_local_paths = local_uefi
                 .into_iter()
-                .map(|(arch, path)| {
-                    let uefi_arch = match arch {
-                        CommonArch::X86_64 => crate::download_uefi_mu_msvm::MuMsvmArch::X86_64,
-                        CommonArch::Aarch64 => crate::download_uefi_mu_msvm::MuMsvmArch::Aarch64,
-                    };
-                    (uefi_arch, ConfigVar(path))
-                })
+                .map(|(arch, path)| (arch, ConfigVar(path)))
                 .collect();
             ctx.config(crate::download_uefi_mu_msvm::Config {
                 local_paths: uefi_local_paths,
